@@ -18,7 +18,7 @@ library(dplyr)
 library(rsconnect)
 
 con <- dbConnect(RSQLite::SQLite(), dbname ='final.db')
-categories <- dbGetQuery(con, "SELECT DISTINCT cate FROM vendors WHERE cate NOT IN ('Home', 'Gifts & Donations', 'Personal')")
+categories <- dbGetQuery(con, "SELECT DISTINCT cate FROM vendors WHERE cate NOT IN ('Home', 'Gifts & Donations', 'Personal', 'Automotive', 'Professional Services', 'Bills & Utilities')")
 transactions <- dbGetQuery(con, "SELECT t.*, v.cate
 FROM transactions AS t
 JOIN vendors AS v ON t.vendor = v.vendor;")
@@ -51,6 +51,16 @@ server <- function(input, output, session) {
       summarise(amount = sum(amount))
   })
   
+  av_spending <- reactive({
+    days <- as.numeric(difftime(as.Date(input$dates[2]), as.Date(input$dates[1]), units = "days")) + 1
+    tot_spending() / days
+  })
+  
+  net_inc <- reactive({
+    days <- as.numeric(difftime(as.Date(input$dates[2]), as.Date(input$dates[1]), units = "days")) + 1
+    (input$annual_income * days / 365) - tot_spending()
+  })
+  
   # Create a reactive function for plot data
   plot_data <- reactive({
     if ("All Categories" %in% input$cate) {
@@ -74,6 +84,24 @@ server <- function(input, output, session) {
     }
   })
   
+
+  output$text <- renderText({
+    paste("You are losing $", round(av_spending(), 2), "per day!")
+  })
+  output$net <- renderText({
+    paste("Wow you saved: $", round(net_inc(), 2))
+  })
+  output$value <- renderText({
+    gain <- net_inc() * (1.07) ** 100
+    # Round gain to two decimal points
+    rounded_gain <- round(gain, 2)
+    
+    # Format rounded_gain with commas every three numbers
+    formatted_gain <- format(rounded_gain, big.mark = ",")
+    
+    paste("This becomes $", formatted_gain, "in 100 years!")
+  })
+  
   output$plot <- renderPlotly({
     # Create a scatter plot with hover text showing the amount
     p <- plot_ly(plot_data(), x = ~tra_date, y = ~amount,
@@ -88,32 +116,6 @@ server <- function(input, output, session) {
     
     p
   })
-  
-  
-  output$text <- renderText({
-    days <- as.numeric(difftime(as.Date(input$dates[2]), as.Date(input$dates[1]), units = "days")) + 1
-    av_spending <- tot_spending()/days
-    paste("You are losing $", round(av_spending, 2), "per day!")
-  })
-  output$net <- renderText({
-    days <- as.numeric(difftime(as.Date(input$dates[2]), as.Date(input$dates[1]), units = "days")) + 1
-    netinc <- (input$annual_income * days / 365) - tot_spending()
-    paste("Wow you saved: $", round(netinc, 2))
-  })
-  output$value <- renderText({
-    days <- as.numeric(difftime(as.Date(input$dates[2]), as.Date(input$dates[1]), units = "days")) + 1
-    netinc <- (input$annual_income * days / 365) - tot_spending()
-    gain <- netinc * (1.07) ** 100
-    
-    # Round gain to two decimal points
-    rounded_gain <- round(gain, 2)
-    
-    # Format rounded_gain with commas every three numbers
-    formatted_gain <- format(rounded_gain, big.mark = ",")
-    
-    paste("This becomes $", formatted_gain, "in 100 years!")
-  })
-  
   
   on.exit(dbDisconnect(con), add = TRUE)
 }
